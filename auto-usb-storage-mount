@@ -50,6 +50,8 @@ log() {
     fi
 }
 
+log "$LOG_LEVEL_INFO" "Starting auto-usb-storage-mount with mount_rules_file: $MOUNT_RULES_FILE and LOG_LEVEL: $LOG_LEVEL"
+
 # Cleanup
 cleanup() {
     log "$LOG_LEVEL_INFO" "Cleaning up and unmounting all drives..."

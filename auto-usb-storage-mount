@@ -1,0 +1,188 @@
+#!/bin/bash
+
+# root check
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root"
+    exit 1
+fi
+
+# Usage check
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <mount_rules_file>"
+    exit 1
+fi
+
+MOUNT_RULES_FILE="$1"
+
+# Check for file existence
+if [ ! -f "$MOUNT_RULES_FILE" ]; then
+    echo "File not found: $MOUNT_RULES_FILE"
+    exit 1
+fi
+
+# Log levels
+LOG_LEVEL_DEBUG="DEBUG"
+LOG_LEVEL_INFO="INFO"
+LOG_LEVEL_ERROR="ERROR"
+LOG_LEVEL_DEFAULT="$LOG_LEVEL_INFO"
+LOG_LEVEL="${LOG_LEVEL:-$LOG_LEVEL_DEFAULT}"
+
+# Convert log level to integer
+log_level_to_int() {
+    case "$1" in
+    "$LOG_LEVEL_DEBUG") echo 3 ;;
+    "$LOG_LEVEL_INFO") echo 2 ;;
+    "$LOG_LEVEL_ERROR") echo 1 ;;
+    *) echo 0 ;;
+    esac
+}
+
+LOG_LEVEL_INT=$(log_level_to_int "$LOG_LEVEL")
+
+# Log message
+log() {
+    local level="$1"
+    local message="$2"
+    local level_int=$(log_level_to_int "$level")
+
+    if [ "$level_int" -le "$LOG_LEVEL_INT" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] $message"
+    fi
+}
+
+# Cleanup
+cleanup() {
+    log "$LOG_LEVEL_INFO" "Cleaning up and unmounting all drives..."
+    while IFS='@' read -r id user_mountpoint; do
+        IFS=':' read -r owning_user mountpoint <<<"$user_mountpoint"
+        if [ -n "$mountpoint" ] && mount | grep -q "$mountpoint"; then
+            umount "$mountpoint"
+            log "$LOG_LEVEL_INFO" "$mountpoint unmounted successfully."
+        fi
+    done <"$MOUNT_RULES_FILE"
+}
+
+# Exit
+xit() {
+    cleanup
+    exit 0
+}
+
+trap xit SIGINT SIGTERM
+
+# Get partition by PARTUUID
+get_partition_by_uuid() {
+    local partuuid="$1"
+
+    log "$LOG_LEVEL_DEBUG" "Searching for partition with PARTUUID ""$partuuid""..."
+
+    # Use blkid to find the partition with the specified PARTUUID
+    local partition_path=$(blkid -o device | while read -r dev; do
+        if blkid "$dev" | grep -q "PARTUUID=\"$partuuid\""; then
+            echo "$dev"
+            break
+        fi
+    done)
+
+    if [ -n "$partition_path" ]; then
+        log "$LOG_LEVEL_INFO" "Found partition with PARTUUID ""$partuuid"" on $partition_path"
+
+        return
+    fi
+
+    log "$LOG_LEVEL_ERROR" "No partition with PARTUUID ""$partuuid"" found."
+}
+
+# Mount drive
+mount_drive() {
+    local id="$1"
+    local owning_user="$2"
+    local mountpoint="$3"
+
+    if [ -z "$id" ] || [ -z "$owning_user" ] || [ -z "$mountpoint" ]; then
+        log "$LOG_LEVEL_ERROR" \
+            "Invalid mount rule with id: ""$id"", owning_user: ""$owning_user"", mountpoint: ""$mountpoint""."
+
+        return
+    fi
+
+    log "$LOG_LEVEL_DEBUG" "Searching for partition with PARTUUID ""$id""..."
+
+    # Use blkid to find the partition with the specified PARTUUID
+    local partition_path=$(blkid -o device | while read -r dev; do
+        if blkid "$dev" | grep -q "PARTUUID=\"$id\""; then
+            echo "$dev"
+
+            break
+        fi
+    done)
+
+    if [ -z "$partition_path" ]; then
+        log "$LOG_LEVEL_ERROR" "No partition with PARTUUID ""$id"" found."
+
+        log "$LOG_LEVEL_DEBUG" "Unmounting $mountpoint if it's mounted..."
+        if [ -n "$mountpoint" ] && mount | grep -q "$mountpoint"; then
+            umount "$mountpoint"
+            log "$LOG_LEVEL_INFO" "$mountpoint unmounted successfully."
+        fi
+
+        return
+    fi
+
+    log "$LOG_LEVEL_INFO" "Found partition with PARTUUID ""$id"" on $partition_path"
+
+    # Validate user
+    if ! id "$owning_user" &>/dev/null; then
+        log "$LOG_LEVEL_ERROR" "User $owning_user not found. Skipping mount for $id."
+
+        return
+    fi
+
+    local uid=$(id -u "$owning_user")
+    local gid=$(id -g "$owning_user")
+
+    if [[ -n "$id" && -n "$mountpoint" ]]; then
+        if ! mount | grep -q "$mountpoint"; then
+            log "$LOG_LEVEL_INFO" "Mounting $id at $mountpoint for user $owning_user"
+            mkdir -p "$mountpoint"
+
+            # Attempt to mount the partition
+            if mount -o uid="$uid",gid="$gid",umask=022 "$partition_path" "$mountpoint"; then
+                log "$LOG_LEVEL_INFO" \
+                    "$mountpoint mounted successfully with partition_path: $partition_path and " \
+                    "owning_user: $owning_user with uid: $uid and gid: $gid."
+
+                return
+            fi
+
+            log "$LOG_LEVEL_ERROR" "Failed to mount $id at $mountpoint for user $owning_user"
+
+            return
+        fi
+
+        log "$LOG_LEVEL_DEBUG" "$mountpoint is already mounted."
+
+        return
+    fi
+
+    log "$LOG_LEVEL_ERROR" "Invalid mount rule: $id@$owning_user:$mountpoint"
+}
+
+while true; do
+    current_line_number=0
+
+    while IFS='@' read -r id user_mountpoint; do
+        current_line_number=$((current_line_number + 1))
+
+        IFS=':' read -r owning_user mountpoint <<<"$user_mountpoint"
+        if [[ -n "$id" && -n "$owning_user" && -n "$mountpoint" ]]; then
+            mount_drive "$id" "$owning_user" "$mountpoint"
+            continue
+        fi
+
+        log "$LOG_LEVEL_ERROR" "Malformed line #$current_line_number in $MOUNT_RULES_FILE"
+    done <"$MOUNT_RULES_FILE"
+
+    log "$LOG_LEVEL_DEBUG" "Sleeping for 10s..."
+    sleep 10
+done

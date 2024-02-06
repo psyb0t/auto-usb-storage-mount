@@ -129,7 +129,7 @@ mount_drive() {
         return
     fi
 
-    log "$LOG_LEVEL_INFO" "Found partition with PARTUUID ""$id"" on $partition_path"
+    log "$LOG_LEVEL_DEBUG" "Found partition with PARTUUID ""$id"" on $partition_path"
 
     # Validate user
     if ! id "$owning_user" &>/dev/null; then

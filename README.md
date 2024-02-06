@@ -50,13 +50,13 @@ PARTUUID@username:/mount/point
 
 How to get PARTUUID:
 
-```
-blkid /dev/sda1
+```bash
+sudo blkid /dev/sda1
 ```
 
 This spits out something like `/dev/sda1: BLOCK_SIZE="512" UUID="7FEC5B8016173001" TYPE="ntfs" PARTLABEL="Elements" PARTUUID="0f119989-6380-4106-896e-f8e6372170ee"`
 
-Replace `your-partuuid` with the PARTUUID of your device, `username` with the user you wish to own the mount point, and `/mount/point` with the desired location in the filesystem.
+Replace `PARTUUID` with the PARTUUID of your device, `username` with the user you wish to own the mount point, and `/mount/point` with the desired location in the filesystem.
 
 ### License: WTFPL
 

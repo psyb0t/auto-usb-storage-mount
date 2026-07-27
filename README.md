@@ -1,5 +1,8 @@
 # auto-usb-storage-mount
 
+[![version](https://raw.githubusercontent.com/psyb0t/auto-usb-storage-mount/badges/version.svg)](https://github.com/psyb0t/auto-usb-storage-mount/releases)
+[![license](https://raw.githubusercontent.com/psyb0t/auto-usb-storage-mount/badges/license.svg)](LICENSE)
+
 ## Welcome to the Rebellion of Mounting
 
 Ever felt like the world of Linux mounting was too orderly, too predictable, too... structured? Enter `auto-usb-storage-mount`, the anarchist in the world of USB drive management. This software doesn't just mount your USB drives; it launches a full-scale revolution against the tyranny of manual mounting, making your drives appear exactly where you want them, as if by magic (or anarchy).
